@@ -9,8 +9,17 @@ on:
       - '**/*.html'
       - '!**.github/**'
   workflow_dispatch:
+    inputs:
+      exclude_folders:
+        description: '逗号分隔的要排除的文件夹（相对于根目录）'
+        required: false
+        default: '.github,node_modules,__pycache__,dist,build'
   schedule:
     - cron: '0 0 * * *'
+
+env:
+  UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
+  EXCLUDE_FOLDERS: ${{ github.event_name == 'workflow_dispatch' && inputs.exclude_folders || '.github,node_modules,__pycache__,dist,build,.git' }}
 
 jobs:
   build-and-deploy:
@@ -21,35 +30,119 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup Python and uv with caching
+        uses: astral-sh/setup-uv@v3
         with:
           python-version: '3.11'
-
-      - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          enable-cache: true
+          cache-dependency-glob: 'pyproject.toml'
 
       - name: Install rendergit
-        run: uv tool install git+https://github.com/karpathy/rendergit
+        run: |
+          uv tool install --from git+https://github.com/karpathy/rendergit
+          echo "$(uv tool list | grep rendergit | awk '{print $2}')" >> $GITHUB_PATH
 
-      - name: Generate Static HTML
+      - name: Prepare exclude directories
+        run: |
+          echo "EXCLUDE_FOLDERS=$EXCLUDE_FOLDERS" >> $GITHUB_ENV
+          # 创建排除目录列表文件
+          if [[ -n "$EXCLUDE_FOLDERS" ]]; then
+            IFS=',' read -ra FOLDERS <<< "$EXCLUDE_FOLDERS"
+            for folder in "${FOLDERS[@]}"; do
+              folder_trimmed=$(echo "$folder" | xargs)
+              if [[ -n "$folder_trimmed" && -d "$folder_trimmed" ]]; then
+                echo "🚫 排除目录: $folder_trimmed"
+                # 创建临时副本，排除指定目录
+                find "$folder_trimmed" -type f | while read -r file; do
+                  echo "$file" >> .excluded_files.txt
+                done
+              fi
+            done
+          fi
+
+      - name: Generate Static HTML with exclusions
         run: |
           mkdir -p ./dist
-          uv run rendergit ./ -o ./dist/index.html --no-open
-          if [ ! -f ./dist/index.html ]; then
+          
+          # 构建 rendergit 命令参数
+          RENDER_ARGS="./ -o ./dist/index.html --no-open"
+          
+          # 如果有排除目录，使用过滤后的文件列表
+          if [[ -f .excluded_files.txt ]]; then
+            echo "📁 使用排除列表生成HTML（排除 $(wc -l < .excluded_files.txt) 个文件）"
+            # 创建临时目录用于过滤
+            TEMP_DIR=$(mktemp -d)
+            cp -r ./* "$TEMP_DIR" 2>/dev/null || true
+            
+            # 移除排除的文件
+            while read -r file; do
+              if [[ -f "$file" ]]; then
+                rm -f "$TEMP_DIR/${file#./}"
+              fi
+            done < .excluded_files.txt
+            
+            # 从临时目录生成HTML
+            uv run rendergit "$TEMP_DIR" -o ./dist/index.html --no-open
+            rm -rf "$TEMP_DIR"
+          else
+            echo "📁 生成完整HTML"
+            uv run rendergit $RENDER_ARGS
+          fi
+          
+          # 验证生成结果
+          if [[ ! -f ./dist/index.html ]]; then
             echo "❌ HTML 文件生成失败"
             exit 1
           fi
+          
           echo "✅ HTML 文件生成成功"
+          echo "📊 文件大小: $(ls -lh ./dist/index.html | awk '{print $5}')"
 
-      - name: Install Cloudflare Wrangler
-        run: npm install -g wrangler@4.52.1
+      - name: Setup Cloudflare Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Deploy to Cloudflare Pages
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          wrangler pages deploy ./dist --project-name=rendergit-auto --commit-dirty=true
-          echo "✅ 部署完成！访问地址：https://rendergit-auto.pages.dev"
+          # 检查并创建项目（如果不存在）
+          if ! wrangler pages project list | grep -q "rendergit-auto"; then
+            echo "🆕 创建新项目: rendergit-auto"
+            wrangler pages project create rendergit-auto --production-branch main
+          fi
+          
+          # 部署到 Cloudflare Pages
+          DEPLOY_OUTPUT=$(wrangler pages deploy ./dist \
+            --project-name=rendergit-auto \
+            --commit-dirty=true \
+            --branch main)
+          
+          # 提取部署URL
+          DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -o 'https://[^ ]*\.pages\.dev')
+          if [[ -n "$DEPLOY_URL" ]]; then
+            echo "✅ 部署完成！"
+            echo "🌐 访问地址: $DEPLOY_URL"
+            echo "DEPLOY_URL=$DEPLOY_URL" >> $GITHUB_ENV
+          else
+            echo "⚠️  无法提取部署URL，原始输出:"
+            echo "$DEPLOY_OUTPUT"
+          fi
+
+      - name: Create deployment summary
+        if: always()
+        run: |
+          echo "## 🚀 部署结果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**状态**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ -n "$DEPLOY_URL" ]]; then
+            echo "**访问地址**: [$DEPLOY_URL]($DEPLOY_URL)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**排除的文件夹**: \`${{ env.EXCLUDE_FOLDERS }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ -f ./dist/index.html ]]; then
+            echo "**生成文件**: \`dist/index.html\` ($(ls -lh ./dist/index.html | awk '{print $5}'))" >> $GITHUB_STEP_SUMMARY
+          fi
