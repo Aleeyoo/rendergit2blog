@@ -35,14 +35,15 @@ jobs:
       - name: Install rendergit
         run: uv tool install git+https://github.com/karpathy/rendergit
 
-      # 步骤4：用 rendergit 生成静态 HTML（基于本地克隆的仓库内容）
-      - name: Generate Static HTML with rendergit
-        run: |
-          # 关键：渲染当前仓库的本地目录，输出到 ./dist/index.html（Cloudflare 部署目录）
-          uv run rendergit ./ --o ./dist/index.html --no-open
-          # 可选：查看生成的文件（调试用）
-          ls -la ./dist
-
+# 步骤4：用 rendergit 生成静态 HTML（基于本地克隆的仓库内容）
+- name: Generate Static HTML with rendergit
+  run: |
+    # 核心修复：创建 dist 目录（-p 确保目录不存在时创建，存在时不报错）
+    mkdir -p ./dist
+    # 渲染当前仓库的本地目录，输出到 ./dist/index.html（Cloudflare 部署目录）
+    uv run rendergit ./ -o ./dist/index.html --no-open
+    # 可选：查看生成的文件（调试用）
+    ls -la ./dist
       # 步骤5：安装 Cloudflare Wrangler（部署 Pages 的 CLI 工具）
       - name: Install Cloudflare Wrangler
         run: npm install -g wrangler
