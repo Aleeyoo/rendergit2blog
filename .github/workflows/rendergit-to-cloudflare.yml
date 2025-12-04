@@ -34,41 +34,45 @@ jobs:
       - name: Install rendergit
         run: uv tool install git+https://github.com/karpathy/rendergit
 
-      - name: Generate Static HTML (手动过滤隐藏文件)
+      - name: Generate Static HTML (过滤隐藏文件)
         run: |
-          # 1. 清理旧目录+创建新目录（避免缓存干扰）
+          # 1. 彻底清理旧文件（避免任何缓存）
           rm -rf ./temp_src ./dist
           mkdir -p ./temp_src ./dist
 
-          # 2. 核心：rsync 过滤复制（修复空格问题，优化语法）
-          rsync -av \
-            --exclude='.*' \          # 排除所有 . 开头的隐藏文件/目录
-            --include='*.md' \        # 保留 MD 文件
-            --include='*.py' \        # 保留 Python 文件
-            --include='*.html' \      # 保留 HTML 文件
-            --include='*/' \          # 保留目录结构
-            --exclude='*' \           # 排除其他所有文件
-            ./ ./temp_src/            # 源路径（无空格！）→ 目标路径
+          # 2. 核心：用 find + cp 过滤复制（无 rsync 依赖，稳定无空格问题）
+          # 查找所有 md/py/html 文件，排除 . 开头的隐藏目录/文件
+          find ./ \
+            -maxdepth 10 \                  # 限制查找深度（避免递归过深）
+            -type f \                       # 仅处理文件（不处理目录）
+            \( -name "*.md" -o -name "*.py" -o -name "*.html" \) \  # 仅保留目标文件类型
+            -not -path "./.*" \             # 排除 . 开头的隐藏路径（如 .git/.github）
+            -not -path "./temp_src/*" \     # 排除临时目录
+            -not -path "./dist/*" \         # 排除部署目录
+          | while read -r file; do
+              # 复制文件并保留目录结构（关键：--parents 保留相对路径）
+              cp --parents "$file" ./temp_src/
+            done
 
-          # 3. 验证临时目录是否有文件（避免空目录导致渲染失败）
-          if [ -z "$(ls -A ./temp_src)" ]; then
-            echo "❌ 临时目录无有效文件，过滤规则可能有误"
+          # 3. 验证临时目录是否有有效文件
+          if [ -z "$(ls -A ./temp_src 2>/dev/null)" ]; then
+            echo "❌ 未找到任何需要渲染的文件（md/py/html）"
             exit 1
           fi
 
-          # 4. 渲染过滤后的临时目录
+          # 4. 用 rendergit 渲染过滤后的临时目录
           uv run rendergit ./temp_src -o ./dist/index.html --no-open
 
-          # 5. 验证 HTML 生成
+          # 5. 验证 HTML 生成结果
           if [ ! -f ./dist/index.html ]; then
             echo "❌ HTML 文件生成失败"
             exit 1
           fi
           echo "✅ HTML 文件生成成功（已过滤隐藏文件）"
 
-          # 可选：查看临时目录内容（调试用）
-          echo "=== 临时目录文件列表 ==="
-          ls -la ./temp_src
+          # 调试用：查看临时目录内容（确认无隐藏文件）
+          echo "=== 临时目录文件列表（前10个）==="
+          ls -la ./temp_src 2>/dev/null | head -n 10
 
       - name: Install Cloudflare Wrangler
         run: npm install -g wrangler@4.52.1
