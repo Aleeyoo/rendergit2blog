@@ -29,6 +29,7 @@ jobs:
       - name: Install uv
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Install rendergit
@@ -36,43 +37,28 @@ jobs:
 
       - name: Generate Static HTML (过滤隐藏文件)
         run: |
-          # 1. 彻底清理旧文件（避免任何缓存）
+          # 1. 彻底清理旧文件
           rm -rf ./temp_src ./dist
           mkdir -p ./temp_src ./dist
 
-          # 2. 核心：用 find + cp 过滤复制（无 rsync 依赖，稳定无空格问题）
-          # 查找所有 md/py/html 文件，排除 . 开头的隐藏目录/文件
-          find ./ \
-            -maxdepth 10 \                  # 限制查找深度（避免递归过深）
-            -type f \                       # 仅处理文件（不处理目录）
-            \( -name "*.md" -o -name "*.py" -o -name "*.html" \) \  # 仅保留目标文件类型
-            -not -path "./.*" \             # 排除 . 开头的隐藏路径（如 .git/.github）
-            -not -path "./temp_src/*" \     # 排除临时目录
-            -not -path "./dist/*" \         # 排除部署目录
-          | while read -r file; do
-              # 复制文件并保留目录结构（关键：--parents 保留相对路径）
-              cp --parents "$file" ./temp_src/
-            done
+          # 2. 核心：简化 find 命令（无换行，避免隐藏字符）
+          find ./ -maxdepth 10 -type f \( -name "*.md" -o -name "*.py" -o -name "*.html" \) -not -path "./.*" -not -path "./temp_src/*" -not -path "./dist/*" | while read -r file; do cp --parents "$file" ./temp_src/; done
 
-          # 3. 验证临时目录是否有有效文件
+          # 3. 验证临时目录非空
           if [ -z "$(ls -A ./temp_src 2>/dev/null)" ]; then
-            echo "❌ 未找到任何需要渲染的文件（md/py/html）"
+            echo "❌ 未找到有效文件（md/py/html）"
             exit 1
           fi
 
-          # 4. 用 rendergit 渲染过滤后的临时目录
+          # 4. 渲染 HTML
           uv run rendergit ./temp_src -o ./dist/index.html --no-open
 
-          # 5. 验证 HTML 生成结果
+          # 5. 验证 HTML 生成
           if [ ! -f ./dist/index.html ]; then
-            echo "❌ HTML 文件生成失败"
+            echo "❌ HTML 生成失败"
             exit 1
           fi
-          echo "✅ HTML 文件生成成功（已过滤隐藏文件）"
-
-          # 调试用：查看临时目录内容（确认无隐藏文件）
-          echo "=== 临时目录文件列表（前10个）==="
-          ls -la ./temp_src 2>/dev/null | head -n 10
+          echo "✅ HTML 生成成功（已过滤隐藏文件）"
 
       - name: Install Cloudflare Wrangler
         run: npm install -g wrangler@4.52.1
