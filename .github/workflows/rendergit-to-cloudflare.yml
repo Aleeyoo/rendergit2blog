@@ -23,17 +23,11 @@ jobs:
       - name: Install rendergit (用 pip 替代 uv)
         run: pip install git+https://github.com/karpathy/rendergit.git
         
-      # 自定义 rendergit
-      - name: theme
-        run: |
-          rendergit build ./pages\
-           --title "some pages"
-
       - name: Generate Static HTML (修复中文MD跳过问题)
         run: |
           mkdir -p ./dist
           # 用 pip 安装的 rendergit 直接执行，添加 --max-bytes 渲染中文MD
-          rendergit ./ -o ./dist/index.html --no-open --max-bytes 1000000
+          rendergit ./pages -o ./dist/index.html --no-open --max-bytes 1000000
           if [ -f ./dist/index.html ]; then
             echo "✅ HTML 生成成功"
           else
