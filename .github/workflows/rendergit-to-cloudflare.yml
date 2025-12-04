@@ -39,7 +39,7 @@ jobs:
       - name: Generate Static HTML with rendergit
         run: |
           # 关键：渲染当前仓库的本地目录，输出到 ./dist/index.html（Cloudflare 部署目录）
-          uv run rendergit ./ --output ./dist/index.html --no-open
+          uv run rendergit ./ --o ./dist/index.html --no-open
           # 可选：查看生成的文件（调试用）
           ls -la ./dist
 
