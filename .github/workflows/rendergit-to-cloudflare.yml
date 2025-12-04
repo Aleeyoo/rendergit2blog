@@ -2,6 +2,12 @@ name: Render & Deploy to Cloudflare Pages
 
 on:
   push:
+    branches: [main, master]
+    paths:
+      - '**/*.md'
+      - '**/*.py'
+      - '**/*.html'
+      - '!**.github/**'
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
@@ -25,59 +31,18 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      # 核心修复：精准修改 rendergit 源码（分步骤验证）
-      - name: Clone & Modify rendergit (Filter hidden files)
-        run: |
-          # 1. 克隆 rendergit 源码
-          git clone https://github.com/karpathy/rendergit.git /tmp/rendergit
-          cd /tmp/rendergit
-          
-          # 2. 查看 scan_files 函数的原始代码（调试用，确认位置）
-          echo "=== 原始 scan_files 函数 ==="
-          grep -A 10 "def scan_files" rendergit.py
-          
-          # 3. 精准插入过滤逻辑（兼容所有源码版本）
-          # 先找到 os.walk 行，在其后插入过滤代码
-          python -c "
-          # 读取源码
-          with open('rendergit.py', 'r', encoding='utf-8') as f:
-              lines = f.readlines()
-          
-          # 定位 os.walk 行并插入过滤逻辑
-          new_lines = []
-          for line in lines:
-              new_lines.append(line)
-              # 找到 os.walk 遍历行，插入过滤
-              if 'for root, dirs, files in os.walk(root_dir):' in line:
-                  # 插入过滤 . 开头目录/文件的代码（保持缩进匹配）
-                  new_lines.append('        # Filter hidden files/dirs (start with .)\\n')
-                  new_lines.append('        dirs[:] = [d for d in dirs if not d.startswith(\".\")]\\n')
-                  new_lines.append('        files = [f for f in files if not f.startswith(\".\")]\\n')
-          
-          # 写入修改后的源码
-          with open('rendergit.py', 'w', encoding='utf-8') as f:
-              f.writelines(new_lines)
-          "
-          
-          # 4. 验证修改结果（调试用，确认插入成功）
-          echo "=== 修改后的 scan_files 函数 ==="
-          grep -A 15 "def scan_files" rendergit.py
-          
-          # 5. 安装修改后的 rendergit
-          pip install -e .
+      - name: Install rendergit
+        run: uv tool install git+https://github.com/karpathy/rendergit
 
-      - name: Generate Static HTML (Filter hidden files)
+      - name: Generate Static HTML
         run: |
           mkdir -p ./dist
-          # 清空旧文件（避免缓存）
-          rm -rf ./dist/*
-          # 生成 HTML（无无效参数）
           uv run rendergit ./ -o ./dist/index.html --no-open
-          
-          # 验证：查看生成的 HTML 中是否包含 .git（调试用）
-          echo "=== 检查 HTML 中是否包含 .git ==="
-          grep -c ".git" ./dist/index.html || echo "未找到 .git（过滤成功）"
-          echo "✅ HTML 文件生成完成"
+          if [ ! -f ./dist/index.html ]; then
+            echo "❌ HTML 文件生成失败"
+            exit 1
+          fi
+          echo "✅ HTML 文件生成成功"
 
       - name: Install Cloudflare Wrangler
         run: npm install -g wrangler@4.52.1
