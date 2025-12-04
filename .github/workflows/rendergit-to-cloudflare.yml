@@ -1,65 +1,65 @@
 name: Render & Deploy to Cloudflare Pages
 
-# 触发条件：主分支MD/代码更新、手动触发、每日定时更新
+# 触发条件：主分支更新、手动触发、每日定时更新
 on:
   push:
     branches: [main, master]
     paths:
-      - '**/*.md'        # 监听所有MD文件更新
-      - '**/*.py'        # 可选：监听Python文件（按需调整）
-      - '**/*.html'      # 可选：监听HTML文件（按需调整）
-      - '!**.github/**'  # 排除Actions配置文件自身的变更
-  workflow_dispatch:      # 手动触发开关
+      - '**/*.md'
+      - '**/*.py'
+      - '**/*.html'
+      - '!**.github/**'
+  workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'  # 每日UTC凌晨自动更新（按需调整）
+    - cron: '0 0 * * *'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      # 步骤1：克隆当前GitHub仓库（获取最新的原始文件）
+      # 1. 克隆仓库
       - name: Checkout Source Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 拉取完整提交记录（便于版本溯源）
+          fetch-depth: 0
 
-      # 步骤2：配置Python环境（适配rendergit）
+      # 2. 配置 Python 3.11
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'  # rendergit推荐版本
+          python-version: '3.11'
 
-      # 步骤3：安装uv（快速Python包管理器）
+      # 3. 安装 uv 包管理器
       - name: Install uv
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH  # 加入环境变量
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      # 步骤4：安装rendergit工具
+      # 4. 安装 rendergit
       - name: Install rendergit
         run: uv tool install git+https://github.com/karpathy/rendergit
 
-      # 步骤5：生成静态HTML（核心修复：先创建dist目录）
-      - name: Generate Static HTML with rendergit
+      # 5. 生成静态 HTML（创建 dist 目录）
+      - name: Generate Static HTML
         run: |
-          # 关键：创建dist目录（避免文件写入失败）
           mkdir -p ./dist
-          # 渲染本地仓库，输出到dist/index.html（-o替代--output）
           uv run rendergit ./ -o ./dist/index.html --no-open
-          # 验证文件生成（调试用，可删除）
-          echo "=== 生成的文件列表 ==="
-          ls -la ./dist
-          echo "=== HTML文件大小 ==="
-          du -h ./dist/index.html
+          # 验证文件生成
+          if [ ! -f ./dist/index.html ]; then
+            echo "❌ HTML 文件生成失败"
+            exit 1
+          fi
+          echo "✅ HTML 文件生成成功"
 
-      # 步骤6：安装Cloudflare Wrangler（部署CLI）
+      # 6. 安装 Wrangler（固定版本避免兼容问题）
       - name: Install Cloudflare Wrangler
-        run: npm install -g wrangler
+        run: npm install -g wrangler@4.52.1
 
-      # 步骤7：部署到Cloudflare Pages（核心修复：单行书写+无无效参数）
+      # 7. 部署到 Cloudflare Pages（极简命令）
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          # 终极修复：单行书写所有参数，无换行/空格问题
-          wrangler pages deploy ./dist --project-name=rendergit-auto --commit-hash=${{ github.sha }} --commit-dirty=true
+          # 核心部署命令（替换为你的 Pages 项目名）
+          wrangler pages deploy ./dist --project-name=rendergit-auto
+          echo "✅ 部署完成！访问地址：https://rendergit-auto.pages.dev"
