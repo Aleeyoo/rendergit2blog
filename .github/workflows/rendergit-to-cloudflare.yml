@@ -1,13 +1,7 @@
 name: Render & Deploy to Cloudflare Pages
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - '**/*.md'
-      - '**/*.py'
-      - '**/*.html'
-      - '!**.github/**'
+  push:  # 简化触发规则：所有分支/文件更新都触发（可按需加回 branches/paths）
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
@@ -34,15 +28,24 @@ jobs:
       - name: Install rendergit
         run: uv tool install git+https://github.com/karpathy/rendergit
 
-      - name: Generate Static HTML
+      - name: Generate Static HTML (排除隐藏文件)
         run: |
           mkdir -p ./dist
-          uv run rendergit ./ -o ./dist/index.html --no-open
+          # 核心：添加 --exclude 排除 .git/.github 等隐藏文件/目录
+          uv run rendergit ./ \
+            -o ./dist/index.html \
+            --no-open \
+            --exclude .git \          # 排除 .git 目录
+            --exclude .github \       # 排除 .github 目录
+            --exclude .gitignore \    # 排除 .gitignore 文件
+            --exclude .env \          # 排除 .env 文件（按需添加）
+            --exclude .gitattributes  # 排除 .gitattributes 文件（按需添加）
+          # 验证文件生成
           if [ ! -f ./dist/index.html ]; then
             echo "❌ HTML 文件生成失败"
             exit 1
           fi
-          echo "✅ HTML 文件生成成功"
+          echo "✅ HTML 文件生成成功（已排除隐藏文件）"
 
       - name: Install Cloudflare Wrangler
         run: npm install -g wrangler@4.52.1
