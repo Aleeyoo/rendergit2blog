@@ -34,26 +34,32 @@ jobs:
       - name: Install rendergit
         run: uv tool install git+https://github.com/karpathy/rendergit
 
-      - name: Generate Static HTML (手动过滤隐藏文件夹)
+      - name: Generate Static HTML (手动过滤隐藏文件)
         run: |
-          # 1. 创建临时目录（用于存放需要渲染的文件）
+          # 1. 清理旧目录+创建新目录（避免缓存干扰）
+          rm -rf ./temp_src ./dist
           mkdir -p ./temp_src ./dist
 
-          # 2. 复制需要的文件到临时目录（排除 . 开头的隐藏文件夹/文件）
-          # 仅复制 md/py/html 文件，排除 .git/.github 等隐藏目录
+          # 2. 核心：rsync 过滤复制（修复空格问题，优化语法）
           rsync -av \
-            --exclude='.*' \          # 排除所有 . 开头的文件/目录
-            --include='*.md' \        # 仅包含 md 文件
-            --include='*.py' \        # 仅包含 py 文件
-            --include='*.html' \      # 仅包含 html 文件
+            --exclude='.*' \          # 排除所有 . 开头的隐藏文件/目录
+            --include='*.md' \        # 保留 MD 文件
+            --include='*.py' \        # 保留 Python 文件
+            --include='*.html' \      # 保留 HTML 文件
             --include='*/' \          # 保留目录结构
             --exclude='*' \           # 排除其他所有文件
-            ./ ./temp_src/
+            ./ ./temp_src/            # 源路径（无空格！）→ 目标路径
 
-          # 3. 渲染临时目录（仅包含需要的文件，无隐藏文件）
+          # 3. 验证临时目录是否有文件（避免空目录导致渲染失败）
+          if [ -z "$(ls -A ./temp_src)" ]; then
+            echo "❌ 临时目录无有效文件，过滤规则可能有误"
+            exit 1
+          fi
+
+          # 4. 渲染过滤后的临时目录
           uv run rendergit ./temp_src -o ./dist/index.html --no-open
 
-          # 4. 验证文件生成
+          # 5. 验证 HTML 生成
           if [ ! -f ./dist/index.html ]; then
             echo "❌ HTML 文件生成失败"
             exit 1
