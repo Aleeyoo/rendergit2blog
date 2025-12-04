@@ -1,48 +1,33 @@
 name: Render & Deploy to Cloudflare Pages
 
-# 简化触发规则：主分支任意文件更新都触发
 on:
   push:
     branches: [main, master]
-  workflow_dispatch:  # 保留手动触发
-  schedule:
-    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      # 步骤1：克隆仓库（仅拉取最新提交，减少耗时）
       - name: Checkout Source Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      # 步骤2：配置Python（固定版本）
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 步骤3：安装uv（官方无错命令）
-      - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      # 直接用 pip 安装 rendergit（避开 uv 环境变量问题）
+      - name: Install rendergit (用 pip 替代 uv)
+        run: pip install git+https://github.com/karpathy/rendergit.git
 
-      # 步骤4：添加uv到环境变量
-      - name: Add uv to PATH
-        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-      # 步骤5：安装rendergit
-      - name: Install rendergit
-        run: uv run rendergit ./ -o ./dist/index.html --no-open --max-bytes 1000000
-        
-      # 步骤6：生成HTML（极简：直接渲染根目录，不过滤任何文件）
-      - name: Generate Static HTML
+      - name: Generate Static HTML (修复中文MD跳过问题)
         run: |
           mkdir -p ./dist
-          # 直接渲染根目录，避免temp_src目录的git克隆错误
-          uv run rendergit ./ -o ./dist/index.html --no-open
-          # 验证HTML生成
+          # 用 pip 安装的 rendergit 直接执行，添加 --max-bytes 渲染中文MD
+          rendergit ./ -o ./dist/index.html --no-open --max-bytes 1000000
           if [ -f ./dist/index.html ]; then
             echo "✅ HTML 生成成功"
           else
@@ -50,11 +35,9 @@ jobs:
             exit 1
           fi
 
-      # 步骤7：安装Wrangler（固定版本）
       - name: Install Cloudflare Wrangler
         run: npm install -g wrangler@4.52.1
 
-      # 步骤8：部署到Cloudflare Pages（仅保留必填参数）
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
