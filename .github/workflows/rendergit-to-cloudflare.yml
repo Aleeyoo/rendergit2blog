@@ -56,13 +56,10 @@ jobs:
       - name: Install Cloudflare Wrangler
         run: npm install -g wrangler
 
-      # 步骤7：部署到Cloudflare Pages（移除所有无效参数）
+      # 步骤7：部署到Cloudflare Pages（核心修复：单行书写+无无效参数）
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          # 仅保留有效参数：--project-name/--commit-hash/--commit-dirty
-          wrangler pages deploy ./dist \
-            --project-name=rendergit-auto \  # 替换为你的Cloudflare Pages项目名
-            --commit-hash=${{ github.sha }} \
-            --commit-dirty=true
+          # 终极修复：单行书写所有参数，无换行/空格问题
+          wrangler pages deploy ./dist --project-name=rendergit-auto --commit-hash=${{ github.sha }} --commit-dirty=true
