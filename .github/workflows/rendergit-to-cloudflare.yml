@@ -56,15 +56,11 @@ jobs:
       - name: Install Cloudflare Wrangler
         run: npm install -g wrangler
 
-      # 步骤7：部署到Cloudflare Pages
+      # 步骤7：部署到Cloudflare Pages（核心修复：命令单行书写）
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          # 部署dist目录到Cloudflare Pages
-          wrangler pages deploy ./dist \
-            --project-name=rendergit-auto  # 替换为你的Cloudflare Pages项目名
-            --account-id=$CLOUDFLARE_ACCOUNT_ID \
-            --commit-hash=${{ github.sha }} \
-            --verbose  # 详细输出（便于调试）
+          # 修复：所有参数写在同一行，避免换行导致参数分离
+          wrangler pages deploy ./dist --project-name=rendergit-auto --account-id=$CLOUDFLARE_ACCOUNT_ID --commit-hash=${{ github.sha }} --commit-dirty=true --verbose
