@@ -26,39 +26,35 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      # 修复：用官方推荐的 uv 安装命令（无引号错误）
+      - name: Install uv (官方无错版)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      # 修复：单独添加 uv 到环境变量（避免引号问题）
+      - name: Add uv to PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Install rendergit
         run: uv tool install git+https://github.com/karpathy/rendergit
 
       - name: Generate Static HTML (过滤隐藏文件)
         run: |
-          # 1. 彻底清理旧文件
           rm -rf ./temp_src ./dist
           mkdir -p ./temp_src ./dist
-
-          # 2. 核心：简化 find 命令（无换行，避免隐藏字符）
+          # 单行 find 命令（无隐藏字符）
           find ./ -maxdepth 10 -type f \( -name "*.md" -o -name "*.py" -o -name "*.html" \) -not -path "./.*" -not -path "./temp_src/*" -not -path "./dist/*" | while read -r file; do cp --parents "$file" ./temp_src/; done
-
-          # 3. 验证临时目录非空
+          # 验证临时目录
           if [ -z "$(ls -A ./temp_src 2>/dev/null)" ]; then
-            echo "❌ 未找到有效文件（md/py/html）"
+            echo "❌ 未找到有效文件"
             exit 1
           fi
-
-          # 4. 渲染 HTML
+          # 渲染 HTML
           uv run rendergit ./temp_src -o ./dist/index.html --no-open
-
-          # 5. 验证 HTML 生成
           if [ ! -f ./dist/index.html ]; then
             echo "❌ HTML 生成失败"
             exit 1
           fi
-          echo "✅ HTML 生成成功（已过滤隐藏文件）"
+          echo "✅ HTML 生成成功"
 
       - name: Install Cloudflare Wrangler
         run: npm install -g wrangler@4.52.1
