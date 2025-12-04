@@ -1,7 +1,7 @@
 name: Render & Deploy to Cloudflare Pages
 
 on:
-  push:  # 简化触发规则：所有分支/文件更新都触发（可按需加回 branches/paths）
+  push:
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
@@ -25,27 +25,34 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Install rendergit
-        run: uv tool install git+https://github.com/karpathy/rendergit
+      # 步骤调整：先克隆 rendergit 仓库（而非直接安装），便于修改源码
+      - name: Clone rendergit repo (for code modification)
+        run: |
+          git clone https://github.com/karpathy/rendergit.git /tmp/rendergit
+          cd /tmp/rendergit
 
-      - name: Generate Static HTML (排除隐藏文件)
+          # 核心修改：在源码中添加过滤 . 开头文件的逻辑
+          # 修改 rendergit.py 中扫描文件的函数，排除 . 开头的文件/目录
+          sed -i '/def scan_files(/,/return files/ {
+            /for root, dirs, files in os.walk(root_dir):/a \
+            \        # Filter out hidden files/dirs (start with .)\n        dirs[:] = [d for d in dirs if not d.startswith(".")]\n        files = [f for f in files if not f.startswith(".")]
+          }' rendergit.py
+
+          # 安装修改后的 rendergit
+          pip install -e .
+
+      - name: Generate Static HTML (自动排除隐藏文件)
         run: |
           mkdir -p ./dist
-          # 核心：添加 --exclude 排除 .git/.github 等隐藏文件/目录
-          uv run rendergit ./ \
-            -o ./dist/index.html \
-            --no-open \
-            --exclude .git \          # 排除 .git 目录
-            --exclude .github \       # 排除 .github 目录
-            --exclude .gitignore \    # 排除 .gitignore 文件
-            --exclude .env \          # 排除 .env 文件（按需添加）
-            --exclude .gitattributes  # 排除 .gitattributes 文件（按需添加）
+          # 移除 --exclude 参数，使用修改后的源码自动过滤 . 开头文件
+          uv run rendergit ./ -o ./dist/index.html --no-open
+          
           # 验证文件生成
           if [ ! -f ./dist/index.html ]; then
             echo "❌ HTML 文件生成失败"
             exit 1
           fi
-          echo "✅ HTML 文件生成成功（已排除隐藏文件）"
+          echo "✅ HTML 文件生成成功（已自动排除 . 开头隐藏文件）"
 
       - name: Install Cloudflare Wrangler
         run: npm install -g wrangler@4.52.1
