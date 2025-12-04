@@ -34,8 +34,8 @@ jobs:
 
       # 步骤5：安装rendergit
       - name: Install rendergit
-        run: uv tool install git+https://github.com/karpathy/rendergit
-
+        run: uv run rendergit ./ -o ./dist/index.html --no-open --max-bytes 1000000
+        
       # 步骤6：生成HTML（极简：直接渲染根目录，不过滤任何文件）
       - name: Generate Static HTML
         run: |
