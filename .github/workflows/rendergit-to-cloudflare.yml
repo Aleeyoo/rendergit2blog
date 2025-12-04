@@ -22,6 +22,12 @@ jobs:
       # 直接用 pip 安装 rendergit（避开 uv 环境变量问题）
       - name: Install rendergit (用 pip 替代 uv)
         run: pip install git+https://github.com/karpathy/rendergit.git
+        
+      # 自定义 rendergit
+      - name: theme
+        run: |
+          rendergit build ./pages\
+           --title "some pages"
 
       - name: Generate Static HTML (修复中文MD跳过问题)
         run: |
