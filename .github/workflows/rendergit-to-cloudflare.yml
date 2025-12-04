@@ -1,0 +1,60 @@
+name: Render & Deploy to Cloudflare Pages
+# 触发条件：仓库 push（更新 MD/代码时）、手动触发、每天定时更新
+on:
+  push:
+    branches: [main, master]  # 监听主分支更新
+    paths:
+      - '**/*.md'             # 仅监听 MD 文件更新（可按需调整：如 '**/*.py' '**/*.html'）
+      - '!**.github/**'       # 排除 Actions 配置文件本身的变更
+  workflow_dispatch:          # 手动触发
+  schedule:
+    - cron: '0 0 * * *'       # 每天凌晨 UTC 时间更新（按需调整）
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # 步骤1：克隆当前 GitHub 仓库（获取最新的 MD/代码文件）
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 拉取完整提交记录（可选，用于记录版本）
+
+      # 步骤2：安装 Python + uv（rendergit 依赖）
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'  # 适配 rendergit 的 Python 版本
+
+      - name: Install uv (Fast Python Package Manager)
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH  # 将 uv 加入环境变量
+
+      # 步骤3：安装 rendergit 工具
+      - name: Install rendergit
+        run: uv tool install git+https://github.com/karpathy/rendergit
+
+      # 步骤4：用 rendergit 生成静态 HTML（基于本地克隆的仓库内容）
+      - name: Generate Static HTML with rendergit
+        run: |
+          # 关键：渲染当前仓库的本地目录，输出到 ./dist/index.html（Cloudflare 部署目录）
+          uv run rendergit ./ --output ./dist/index.html --no-open
+          # 可选：查看生成的文件（调试用）
+          ls -la ./dist
+
+      # 步骤5：安装 Cloudflare Wrangler（部署 Pages 的 CLI 工具）
+      - name: Install Cloudflare Wrangler
+        run: npm install -g wrangler
+
+      # 步骤6：部署生成的 HTML 到 Cloudflare Pages
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          # 部署 ./dist 目录到 Cloudflare Pages（替换为你的 Pages 项目名）
+          wrangler pages deploy ./dist \
+            --project-name=rendergit-auto \
+            --account-id=$CLOUDFLARE_ACCOUNT_ID \
+            --commit-hash=${{ github.sha }}  # 关联 GitHub 提交 ID（便于溯源）
