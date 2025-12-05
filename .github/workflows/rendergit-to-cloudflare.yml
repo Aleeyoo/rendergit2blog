@@ -27,7 +27,7 @@ jobs:
         run: |
           mkdir -p ./dist
           # 用 pip 安装的 rendergit 直接执行，添加 --max-bytes 渲染中文MD
-          rendergit ./page -o ./dist/index.html --no-open --max-bytes 1000000
+          rendergit ./ -o ./dist/index.html --no-open --max-bytes 1000000
           if [ -f ./dist/index.html ]; then
             echo "✅ HTML 生成成功"
           else
