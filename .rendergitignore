@@ -1,7 +1,0 @@
-# 隐藏不需要展示的文件夹
-node_modules/
-.github/
-dist/
-.vscode/
-.env/
-page/
