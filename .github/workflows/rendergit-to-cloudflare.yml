@@ -9,44 +9,34 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Source Code
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 直接用 pip 安装 rendergit（避开 uv 环境变量问题）
-      - name: Install rendergit (用 pip 替代 uv)
+      - name: Install rendergit
         run: pip install git+https://github.com/karpathy/rendergit.git
 
-      - name: Generate Static HTML (修复中文MD跳过问题+设置标题)
+      - name: Generate static HTML (fix Chinese MD skip issue)
         run: |
           mkdir -p ./dist
-          # 生成基础HTML（移除无效的--title参数）
-          rendergit ./page -o ./dist/index.html --no-open --max-bytes 1000000
-          
-          # 检查HTML是否生成
-          if [ ! -f ./dist/index.html ]; then
-            echo "❌ HTML 生成失败"
-            exit 1
-          fi
-    
-          # 替换HTML标题为'some...'
-          sed -i.bak 's/<title>.*<\/title>/<title>some...<\/title>/g' ./dist/index.html
-          rm -f ./dist/index.html.bak # 删除备份文件
-          
-          echo "✅ HTML 生成并修改标题成功"
+          rendergit ./ -o ./dist/index.html --no-open --max-bytes 1000000
+          [ -f ./dist/index.html ] || (echo "❌ HTML generation failed" && exit 1)
+          echo "✅ HTML generated successfully"
 
       - name: Install Cloudflare Wrangler
-        run: npm install -g wrangler@4.52.1
+        run: |
+          npm install -g wrangler@4.52.1
+          wrangler --version || (echo "❌ Wrangler installation failed" && exit 1)
 
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           wrangler pages deploy ./dist --project-name=rendergit-auto
-          echo "✅ 部署完成！访问地址：https://rendergit-auto.pages.dev"
+          echo "✅ Deployed successfully! Visit: https://rendergit-auto.pages.dev"
