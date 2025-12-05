@@ -26,8 +26,8 @@ jobs:
       - name: Generate Static HTML (修复中文MD跳过问题)
         run: |
           mkdir -p ./dist
-          # 用 pip 安装的 rendergit 直接执行，添加 --max-bytes 渲染中文MD
-          rendergit ./ -o ./dist/index.html --no-open --max-bytes 1000000
+          # 指定渲染page目录、设置标题为some...、增大字节限制
+          rendergit ./page -o ./dist/index.html --title 'some...' --no-open --max-bytes 1000000
           if [ -f ./dist/index.html ]; then
             echo "✅ HTML 生成成功"
           else
