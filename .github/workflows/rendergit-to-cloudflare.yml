@@ -23,17 +23,23 @@ jobs:
       - name: Install rendergit (用 pip 替代 uv)
         run: pip install git+https://github.com/karpathy/rendergit.git
 
-      - name: Generate Static HTML (修复中文MD跳过问题)
+      - name: Generate Static HTML (修复中文MD跳过问题+设置标题)
         run: |
           mkdir -p ./dist
-          # 指定渲染page目录、设置标题为some...、增大字节限制
-          rendergit ./page -o ./dist/index.html --title 'some...' --no-open --max-bytes 1000000
-          if [ -f ./dist/index.html ]; then
-            echo "✅ HTML 生成成功"
-          else
+          # 生成基础HTML（移除无效的--title参数）
+          rendergit ./page -o ./dist/index.html --no-open --max-bytes 1000000
+          
+          # 检查HTML是否生成
+          if [ ! -f ./dist/index.html ]; then
             echo "❌ HTML 生成失败"
             exit 1
           fi
+    
+          # 替换HTML标题为'some...'
+          sed -i.bak 's/<title>.*<\/title>/<title>some...<\/title>/g' ./dist/index.html
+          rm -f ./dist/index.html.bak # 删除备份文件
+          
+          echo "✅ HTML 生成并修改标题成功"
 
       - name: Install Cloudflare Wrangler
         run: npm install -g wrangler@4.52.1
