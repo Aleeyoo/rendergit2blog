@@ -22,10 +22,14 @@ jobs:
       - name: Install rendergit
         run: pip install git+https://github.com/karpathy/rendergit.git
 
-      - name: Generate static HTML (fix Chinese MD skip issue)
+      - name: Generate static HTML (exclude specified folders)
         run: |
           mkdir -p ./dist
-          rendergit ./ -o ./dist/index.html --no-open --max-bytes 1000000
+          # 排除 node_modules、.github、dist 文件夹，可按需修改
+          rendergit ./ -o ./dist/index.html --no-open --max-bytes 1000000 \
+            --exclude node_modules/ \
+            --exclude .github/ \
+            --exclude dist/
           [ -f ./dist/index.html ] || (echo "❌ HTML generation failed" && exit 1)
           echo "✅ HTML generated successfully"
 
